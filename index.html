@@ -47,6 +47,7 @@
     </div>
     <div class="toolbar">
       <button id="installBtn" hidden>Install</button>
+      <button id="testBtn">Test</button>
       <button id="syncBtn">Sync</button>
     </div>
   </header>
@@ -103,6 +104,7 @@
   </dialog>
 
   <script>
+    const APP_VERSION = "mobile4";
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyDOy5B5q3aI-e9USHLoS6DFUKuhlS8LARhLjGPVQw55O9Qz5sf7RQn_RVZe7QagwXZ/exec";
     const ACCESS_KEY = "";
 
@@ -128,6 +130,7 @@
     };
 
     $("syncBtn").onclick = loadSessions;
+    $("testBtn").onclick = testBackend;
     $("prevMonth").onclick = () => { month.setMonth(month.getMonth() - 1); render(); };
     $("nextMonth").onclick = () => { month.setMonth(month.getMonth() + 1); render(); };
 
@@ -161,11 +164,23 @@
         $("status").textContent = "Paste Apps Script URL in index.html first";
         return;
       }
-      $("status").textContent = "Loading...";
-      const data = await callApi("list");
-      sessions = data.sessions || [];
-      $("status").textContent = "Connected. " + sessions.length + " sessions.";
-      render();
+      try {
+        $("status").textContent = "Loading... " + APP_VERSION;
+        const data = await callApi("list");
+        sessions = data.sessions || [];
+        $("status").textContent = "Connected. " + sessions.length + " sessions. " + APP_VERSION;
+        render();
+      } catch (err) {
+        $("status").textContent = "Error: " + err.message + " " + APP_VERSION;
+      }
+    }
+
+    function testBackend() {
+      const url = new URL(SCRIPT_URL);
+      url.searchParams.set("action", "list");
+      url.searchParams.set("callback", "mobileTest");
+      url.searchParams.set("_", Date.now().toString());
+      window.open(url.toString(), "_blank");
     }
 
     function getFormPayload(prefix) {
@@ -196,7 +211,7 @@
         const script = document.createElement("script");
         const timer = setTimeout(() => {
           cleanup();
-          reject(new Error("Mobile could not reach Apps Script. Check internet, then tap Sync again."));
+          reject(new Error("Timeout reaching Apps Script"));
         }, 20000);
 
         function cleanup() {
