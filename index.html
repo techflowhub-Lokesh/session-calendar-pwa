@@ -104,7 +104,7 @@
   </dialog>
 
   <script>
-    const APP_VERSION = "mobile4";
+    const APP_VERSION = "mobile5";
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyDOy5B5q3aI-e9USHLoS6DFUKuhlS8LARhLjGPVQw55O9Qz5sf7RQn_RVZe7QagwXZ/exec";
     const ACCESS_KEY = "";
 
@@ -205,7 +205,44 @@
       };
     }
 
-    function callApi(action, params = {}) {
+    async function callApi(action, params = {}) {
+      try {
+        return await callApiFetch(action, params);
+      } catch (fetchError) {
+        try {
+          return await callApiJsonp(action, params);
+        } catch (jsonpError) {
+          throw new Error("Fetch failed: " + fetchError.message + " | JSONP failed: " + jsonpError.message);
+        }
+      }
+    }
+
+    async function callApiFetch(action, params = {}) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      try {
+        const url = buildApiUrl(action, params, "fetchCallback");
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          mode: "cors",
+          cache: "no-store",
+          redirect: "follow",
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const text = await response.text();
+        const data = parseApiText(text);
+        if (!data || !data.ok) throw new Error((data && data.error) || "API error");
+        return data;
+      } catch (error) {
+        if (error.name === "AbortError") throw new Error("Timeout reaching Apps Script");
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function callApiJsonp(action, params = {}) {
       return new Promise((resolve, reject) => {
         const callback = "cb_" + Date.now() + "_" + Math.random().toString(16).slice(2);
         const script = document.createElement("script");
@@ -220,12 +257,7 @@
           script.remove();
         }
 
-        const url = new URL(SCRIPT_URL);
-        url.searchParams.set("action", action);
-        url.searchParams.set("callback", callback);
-        url.searchParams.set("_", Date.now().toString());
-        if (ACCESS_KEY) url.searchParams.set("key", ACCESS_KEY);
-        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v || ""));
+        const url = buildApiUrl(action, params, callback);
 
         window[callback] = data => {
           cleanup();
@@ -238,6 +270,24 @@
         script.src = url.toString();
         document.body.appendChild(script);
       });
+    }
+
+    function buildApiUrl(action, params, callback) {
+      const url = new URL(SCRIPT_URL);
+      url.searchParams.set("action", action);
+      url.searchParams.set("callback", callback);
+      url.searchParams.set("_", Date.now().toString());
+      if (ACCESS_KEY) url.searchParams.set("key", ACCESS_KEY);
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v || ""));
+      return url;
+    }
+
+    function parseApiText(text) {
+      const trimmed = String(text || "").trim();
+      if (trimmed[0] === "{") return JSON.parse(trimmed);
+      const match = trimmed.match(/^[\w.$]+\(([\s\S]*)\);?$/);
+      if (!match) throw new Error("Unexpected Apps Script response");
+      return JSON.parse(match[1]);
     }
 
     function render() {
