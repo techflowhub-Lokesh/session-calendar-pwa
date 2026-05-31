@@ -1,4 +1,4 @@
-const CACHE_NAME = "session-calendar-v1";
+const CACHE_NAME = "session-calendar-v2";
 const APP_SHELL = [
   "./",
   "./index.html",

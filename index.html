@@ -169,9 +169,19 @@
     }
 
     function getFormPayload(prefix) {
-      const p = prefix ? prefix : "";
+      if (!prefix) {
+        return {
+          id: "",
+          date: $("date").value,
+          mode: $("mode").value,
+          payment: $("payment").value,
+          organisers: $("organisers").value.trim(),
+          topic: $("topic").value.trim()
+        };
+      }
+      const p = prefix;
       return {
-        id: prefix ? $("editId").value : "",
+        id: $("editId").value,
         date: $(p + "Date").value,
         mode: $(p + "Mode").value,
         payment: $(p + "Payment").value,
