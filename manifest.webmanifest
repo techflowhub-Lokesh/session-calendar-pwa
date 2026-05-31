@@ -1,0 +1,24 @@
+{
+  "name": "Session Calendar",
+  "short_name": "Sessions",
+  "description": "Team session calendar connected to Google Sheets.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f5",
+  "theme_color": "#176b87",
+  "icons": [
+    {
+      "src": "https://placehold.co/192x192/176b87/ffffff.png?text=SC",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://placehold.co/512x512/176b87/ffffff.png?text=SC",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

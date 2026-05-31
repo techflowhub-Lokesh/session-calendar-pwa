@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#176b87">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Sessions">
+  <title>Session Calendar</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <style>
+    :root { --bg:#f4f7f5; --card:#fff; --text:#14231f; --muted:#687872; --line:#dce6e2; --primary:#176b87; --accent:#d97d54; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--text); }
+    header { position:sticky; top:0; z-index:2; display:flex; gap:12px; align-items:center; justify-content:space-between; padding:16px; background:#fffffff0; border-bottom:1px solid var(--line); backdrop-filter:blur(12px); }
+    h1 { margin:0; font-size:20px; }
+    main { width:min(1100px,100%); margin:0 auto; padding:16px; display:grid; gap:16px; }
+    section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; box-shadow:0 8px 24px #14231f12; }
+    .grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+    label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:700; }
+    input, select, button { min-height:40px; border-radius:8px; border:1px solid var(--line); padding:0 10px; font:inherit; }
+    button { cursor:pointer; font-weight:700; background:#fff; }
+    .primary { background:var(--primary); color:white; border-color:var(--primary); }
+    .danger { color:#b3261e; border-color:#f0b9b4; }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .status { color:var(--muted); font-size:13px; }
+    .calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--line); border:1px solid var(--line); overflow:hidden; border-radius:10px; }
+    .day, .weekday { background:#fff; min-height:110px; padding:8px; }
+    .weekday { min-height:auto; text-align:center; color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; }
+    .date { font-weight:800; }
+    .pill { display:block; margin-top:6px; padding:5px 6px; border-radius:6px; background:#e7f3f6; color:#0f5168; font-size:12px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .pill.offline { background:#fff0e8; color:#7b431e; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:10px; border-bottom:1px solid var(--line); text-align:left; font-size:14px; }
+    th { color:var(--muted); font-size:11px; text-transform:uppercase; }
+    .actions { display:flex; gap:6px; }
+    dialog { border:1px solid var(--line); border-radius:10px; width:min(520px,calc(100vw - 24px)); }
+    @media (max-width:760px) { .grid { grid-template-columns:1fr; } .day { min-height:70px; } table { min-width:720px; } .table-wrap { overflow:auto; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Session Calendar</h1>
+      <div class="status" id="status">Not connected</div>
+    </div>
+    <div class="toolbar">
+      <button id="installBtn" hidden>Install</button>
+      <button id="syncBtn">Sync</button>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Add Session</h2>
+      <form id="sessionForm" class="grid">
+        <label>Session Date <input id="date" type="date" required></label>
+        <label>Mode <select id="mode"><option>Online</option><option>Offline</option></select></label>
+        <label>Paid or Free <select id="payment"><option>Paid</option><option>Free</option></select></label>
+        <label>Organisers <input id="organisers" required placeholder="Name/team"></label>
+        <label>Topic <input id="topic" required placeholder="Session topic"></label>
+        <button class="primary" type="submit">Save Session</button>
+      </form>
+    </section>
+
+    <section>
+      <div class="toolbar">
+        <button id="prevMonth">&lt;</button>
+        <strong id="monthTitle"></strong>
+        <button id="nextMonth">&gt;</button>
+      </div>
+      <div id="calendar" class="calendar"></div>
+    </section>
+
+    <section>
+      <h2>All Sessions</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Mode</th><th>Type</th><th>Organisers</th><th>Topic</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="editDialog">
+    <form id="editForm">
+      <h2>Edit Session</h2>
+      <input id="editId" type="hidden">
+      <div class="grid" style="grid-template-columns:1fr 1fr;">
+        <label>Session Date <input id="editDate" type="date" required></label>
+        <label>Mode <select id="editMode"><option>Online</option><option>Offline</option></select></label>
+        <label>Paid or Free <select id="editPayment"><option>Paid</option><option>Free</option></select></label>
+        <label>Organisers <input id="editOrganisers" required></label>
+        <label style="grid-column:1/-1;">Topic <input id="editTopic" required></label>
+      </div>
+      <p class="toolbar">
+        <button class="primary" type="submit">Update</button>
+        <button type="button" onclick="editDialog.close()">Cancel</button>
+      </p>
+    </form>
+  </dialog>
+
+  <script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyDOy5B5q3aI-e9USHLoS6DFUKuhlS8LARhLjGPVQw55O9Qz5sf7RQn_RVZe7QagwXZ/exec";
+    const ACCESS_KEY = "";
+
+    let sessions = [];
+    let month = new Date();
+    let deferredInstallPrompt = null;
+
+    const $ = id => document.getElementById(id);
+    $("date").value = toKey(new Date());
+
+    window.addEventListener("beforeinstallprompt", event => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      $("installBtn").hidden = false;
+    });
+
+    $("installBtn").onclick = async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      $("installBtn").hidden = true;
+    };
+
+    $("syncBtn").onclick = loadSessions;
+    $("prevMonth").onclick = () => { month.setMonth(month.getMonth() - 1); render(); };
+    $("nextMonth").onclick = () => { month.setMonth(month.getMonth() + 1); render(); };
+
+    $("sessionForm").onsubmit = async event => {
+      event.preventDefault();
+      await callApi("add", getFormPayload(""));
+      event.target.reset();
+      $("date").value = toKey(new Date());
+      await loadSessions();
+    };
+
+    $("editForm").onsubmit = async event => {
+      event.preventDefault();
+      await callApi("update", getFormPayload("edit"));
+      $("editDialog").close();
+      await loadSessions();
+    };
+
+    $("rows").onclick = async event => {
+      const edit = event.target.closest("[data-edit]");
+      const del = event.target.closest("[data-delete]");
+      if (edit) openEdit(edit.dataset.edit);
+      if (del && confirm("Delete this session?")) {
+        await callApi("delete", { id: del.dataset.delete });
+        await loadSessions();
+      }
+    };
+
+    async function loadSessions() {
+      if (SCRIPT_URL.includes("PASTE_")) {
+        $("status").textContent = "Paste Apps Script URL in index.html first";
+        return;
+      }
+      $("status").textContent = "Loading...";
+      const data = await callApi("list");
+      sessions = data.sessions || [];
+      $("status").textContent = "Connected. " + sessions.length + " sessions.";
+      render();
+    }
+
+    function getFormPayload(prefix) {
+      const p = prefix ? prefix : "";
+      return {
+        id: prefix ? $("editId").value : "",
+        date: $(p + "Date").value,
+        mode: $(p + "Mode").value,
+        payment: $(p + "Payment").value,
+        organisers: $(p + "Organisers").value.trim(),
+        topic: $(p + "Topic").value.trim()
+      };
+    }
+
+    function callApi(action, params = {}) {
+      return new Promise((resolve, reject) => {
+        const callback = "cb_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+        const script = document.createElement("script");
+        const url = new URL(SCRIPT_URL);
+        url.searchParams.set("action", action);
+        url.searchParams.set("callback", callback);
+        if (ACCESS_KEY) url.searchParams.set("key", ACCESS_KEY);
+        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v || ""));
+
+        window[callback] = data => {
+          delete window[callback];
+          script.remove();
+          data && data.ok ? resolve(data) : reject(new Error((data && data.error) || "API error"));
+        };
+        script.onerror = () => reject(new Error("Could not reach Apps Script"));
+        script.src = url.toString();
+        document.body.appendChild(script);
+      });
+    }
+
+    function render() {
+      $("monthTitle").textContent = month.toLocaleDateString("en-IN", { month:"long", year:"numeric" });
+      renderCalendar();
+      renderRows();
+    }
+
+    function renderCalendar() {
+      const y = month.getFullYear();
+      const m = month.getMonth();
+      const first = new Date(y, m, 1);
+      const start = new Date(y, m, 1 - first.getDay());
+      const grouped = sessions.reduce((map, s) => ((map[s.date] ||= []).push(s), map), {});
+      let html = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="weekday">${d}</div>`).join("");
+
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        const key = toKey(d);
+        const list = grouped[key] || [];
+        html += `<div class="day"><div class="date">${d.getDate()}</div>${list.slice(0,3).map(s => `<span class="pill ${s.mode === "Offline" ? "offline" : ""}">${escapeHtml(s.topic)}</span>`).join("")}</div>`;
+      }
+      $("calendar").innerHTML = html;
+    }
+
+    function renderRows() {
+      $("rows").innerHTML = sessions.map(s => `
+        <tr>
+          <td>${escapeHtml(s.date)}</td>
+          <td>${escapeHtml(s.mode)}</td>
+          <td>${escapeHtml(s.payment)}</td>
+          <td>${escapeHtml(s.organisers)}</td>
+          <td>${escapeHtml(s.topic)}</td>
+          <td class="actions"><button data-edit="${s.id}">Edit</button><button class="danger" data-delete="${s.id}">Delete</button></td>
+        </tr>`).join("");
+    }
+
+    function openEdit(id) {
+      const s = sessions.find(item => item.id === id);
+      if (!s) return;
+      $("editId").value = s.id;
+      $("editDate").value = s.date;
+      $("editMode").value = s.mode;
+      $("editPayment").value = s.payment;
+      $("editOrganisers").value = s.organisers;
+      $("editTopic").value = s.topic;
+      $("editDialog").showModal();
+    }
+
+    function toKey(date) {
+      return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+    }
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[c]));
+    }
+
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
+    render();
+    loadSessions().catch(err => $("status").textContent = err.message);
+  </script>
+</body>
+</html>
