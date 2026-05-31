@@ -194,18 +194,32 @@
       return new Promise((resolve, reject) => {
         const callback = "cb_" + Date.now() + "_" + Math.random().toString(16).slice(2);
         const script = document.createElement("script");
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error("Mobile could not reach Apps Script. Check internet, then tap Sync again."));
+        }, 20000);
+
+        function cleanup() {
+          clearTimeout(timer);
+          delete window[callback];
+          script.remove();
+        }
+
         const url = new URL(SCRIPT_URL);
         url.searchParams.set("action", action);
         url.searchParams.set("callback", callback);
+        url.searchParams.set("_", Date.now().toString());
         if (ACCESS_KEY) url.searchParams.set("key", ACCESS_KEY);
         Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v || ""));
 
         window[callback] = data => {
-          delete window[callback];
-          script.remove();
+          cleanup();
           data && data.ok ? resolve(data) : reject(new Error((data && data.error) || "API error"));
         };
-        script.onerror = () => reject(new Error("Could not reach Apps Script"));
+        script.onerror = () => {
+          cleanup();
+          reject(new Error("Could not reach Apps Script"));
+        };
         script.src = url.toString();
         document.body.appendChild(script);
       });
